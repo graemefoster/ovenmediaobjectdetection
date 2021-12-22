@@ -1,4 +1,5 @@
 import logging
+from concurrent.futures import ThreadPoolExecutor
 import torch
 import cv2
 from av import VideoFrame
@@ -11,10 +12,9 @@ from OvenMediaSignaller import OvenMediaSignaller, OvenMediaConnectionException
 
 logger = logging.getLogger("pc")
 relay = MediaRelay()
-
 model = torch.hub.load('ultralytics/yolov5', 'yolov5s')
 keep_processing = True
-
+model_executor = ThreadPoolExecutor(max_workers=2)
 
 class VideoTransformTrack(MediaStreamTrack):
     """
@@ -28,6 +28,16 @@ class VideoTransformTrack(MediaStreamTrack):
         self.frame_count = 0
         self.results = None
         self.current_process_thread = None
+        self.running_models = 0
+
+    async def process_frame_async(self, frame):
+        if self.running_models == 0:
+            self.running_models = self.running_models + 1
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(model_executor, self.process_frame, frame)
+            self.running_models = self.running_models - 1
+            return result
+        return None
 
     # Process the frame and overwrite the results when we've got new ones
     def process_frame(self, frame):
@@ -42,11 +52,8 @@ class VideoTransformTrack(MediaStreamTrack):
 
         # Really don't know Python but trying to process image out of main event loop
         if self.frame_count % 10 == 0:
-            self.current_process_thread = threading.Thread(
-                target=self.process_frame,
-                args=(frame,)
-            )
-            self.current_process_thread.start()
+            loop = asyncio.get_event_loop()
+            loop.create_task(self.process_frame_async(frame))
 
         if self.results is not None:
             for result_index, row in self.results.iterrows():
