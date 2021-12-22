@@ -21,13 +21,15 @@ class VideoTransformTrack(MediaStreamTrack):
     """
     kind = "video"
 
-    def __init__(self, track):
+    def __init__(self, track, model_run_rate):
         super().__init__()  # don't forget this!
         self.track = track
         self.frame_count = 0
         self.results = None
         self.current_process_thread = None
         self.running_models = 0
+        self.previous_frame = None
+        self.model_run_rate = int(model_run_rate)
 
     async def process_frame_async(self, frame):
         if self.running_models == 0:
@@ -49,7 +51,7 @@ class VideoTransformTrack(MediaStreamTrack):
         current_image = frame.to_ndarray(format="bgr24")
 
         # Really don't know Python but trying to process image out of main event loop
-        if self.frame_count % 10 == 0:
+        if self.frame_count % self.model_run_rate == 0:
             loop = asyncio.get_event_loop()
             loop.create_task(self.process_frame_async(frame))
 
@@ -58,7 +60,7 @@ class VideoTransformTrack(MediaStreamTrack):
                 # if row.confidence > 0.65:
                 cv2.rectangle(current_image, (int(row.xmin), int(row.ymin)), (int(row.xmax), int(row.ymax)),
                               (0, 255, 0), 2)
-                cv2.putText(current_image, row['name'], (int(row.xmin), int(row.ymin) + 15), cv2.FONT_HERSHEY_COMPLEX,
+                cv2.putText(current_image, row['name'], (int(row.xmin), int(row.ymin) + 15), cv2.FONT_HERSHEY_DUPLEX,
                             1, (0, 255, 0))
 
         new_frame = VideoFrame.from_ndarray(current_image, format="bgr24")
@@ -73,9 +75,15 @@ def log_info(msg, *args):
     logger.info(" " + msg, *args)
 
 
-async def connect_to_ovenmedia_stream(stop_processing_callback):
+async def connect_to_ovenmedia_stream(
+        ovenmediaserver,
+        input_stream,
+        output_stream,
+        model_rate,
+        stop_processing_callback):
+
     signaller = OvenMediaSignaller(
-        oven_media_url="ws://ovenmediatest.graemefoster.net:3333/app/stream",
+        oven_media_url=f'{ovenmediaserver}/{input_stream}',
         broadcast=False
     )
 
@@ -87,7 +95,7 @@ async def connect_to_ovenmedia_stream(stop_processing_callback):
         if track.kind == "audio":
             audio["track"] = track
         elif track.kind == "video":
-            video["track"] = VideoTransformTrack(track)
+            video["track"] = VideoTransformTrack(track, model_rate)
 
     while not signaller.connected:
         try:
@@ -95,7 +103,12 @@ async def connect_to_ovenmedia_stream(stop_processing_callback):
         except OvenMediaConnectionException:
             await asyncio.sleep(2)
 
-    publish_signaller = build_publishing_signaller(audio["track"], video["track"])
+    publish_signaller = OvenMediaSignaller(
+        oven_media_url=f'{ovenmediaserver}/{output_stream}?direction=send',
+        broadcast=True,
+        tracks_to_broadcast=[audio["track"], video["track"]]
+    )
+
     await publish_signaller.connect()
 
     stop = False
@@ -108,10 +121,3 @@ async def connect_to_ovenmedia_stream(stop_processing_callback):
     if signaller is not None:
         await signaller.stop()
 
-
-def build_publishing_signaller(audio, video):
-    return OvenMediaSignaller(
-        oven_media_url="ws://ovenmediatest.graemefoster.net:3333/app/stream2?direction=send",
-        broadcast=True,
-        tracks_to_broadcast=[audio, video]
-    )

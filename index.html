@@ -6,19 +6,41 @@
     <script src="https://cdn.jsdelivr.net/npm/ovenplayer/dist/ovenplayer.js"></script>
 </head>
 <body>
-    <div id="player_transformed_id" style="width:640px; height:320px"></div>
+
+    <div style="width:640px; height:320px">
+        <div id="player_raw_id"></div>
+    </div>
+    <hr/>
+    <div style="width:640px; height:320px">
+        <div id="player_transformed_id" ></div>
+    </div>
 
 <script>
 
         // Initialize OvenPlayer
-        const player = OvenPlayer.create('player_transformed_id', {
+        const player_raw = OvenPlayer.create('player_raw_id',
+            {
             sources: [
                 {
                     label: 'transformed',
                     // Set the type to 'webrtc'
                     type: 'webrtc',
                     // Set the file to WebRTC Signaling URL with OvenMediaEngine
-                    file: 'wss://ovenmediatest.graemefoster.net:3334/app/stream2'
+                    file: '{input-stream}'
+                }
+            ]
+        });
+
+        // Initialize OvenPlayer
+        const player_enriched = OvenPlayer.create('player_transformed_id',
+            {
+            sources: [
+                {
+                    label: 'transformed',
+                    // Set the type to 'webrtc'
+                    type: 'webrtc',
+                    // Set the file to WebRTC Signaling URL with OvenMediaEngine
+                    file: '{output-stream}'
                 }
             ]
         });

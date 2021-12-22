@@ -13,8 +13,10 @@ logger = logging.getLogger("pc")
 ROOT = os.path.dirname(__file__)
 stop_processing_signal = {"stop": False}
 
-async def index(request):
+async def index(request, ovenmediaserver, input_stream, ouput_stream):
     content = open(os.path.join(ROOT, "index.html"), "r").read()
+    content = content.replace("{input-stream}", f'{ovenmediaserver}/{input_stream}')
+    content = content.replace("{output-stream}", f'{ovenmediaserver}/{ouput_stream}')
     return web.Response(content_type="text/html", text=content)
 
 
@@ -46,7 +48,10 @@ if __name__ == "__main__":
     parser.add_argument(
         "--port", type=int, default=8081, help="Port for HTTP server (default: 8081)"
     )
-    parser.add_argument("--record-to", help="Write received media to a file."),
+    parser.add_argument("--ovenmediaserver", "--oven", default="ws://ovenmediatest.graemefoster.net:3333")
+    parser.add_argument("--input-stream", "--in", default="app/stream")
+    parser.add_argument("--output-stream", "--out", default="app/stream2")
+    parser.add_argument("--model-rate", "--mr", default="20")
     parser.add_argument("--verbose", "-v", action="count")
     args = parser.parse_args()
 
@@ -63,14 +68,24 @@ if __name__ == "__main__":
 
     app = web.Application()
     app.on_shutdown.append(on_shutdown)
-    app.router.add_get("/", index)
+    app.router.add_get("/", lambda req:index(req, args.ovenmediaserver, args.input_stream, args.output_stream))
 
     loop = asyncio.new_event_loop()
 
-    stream_publisher = loop.create_task(connect_to_ovenmedia_stream(stop_processing_callback))
+    stream_publisher = loop.create_task(
+        connect_to_ovenmedia_stream(
+            args.ovenmediaserver,
+            args.input_stream,
+            args.output_stream,
+            args.model_rate,
+            stop_processing_callback))
 
     web.run_app(
-        app, access_log=None, host=args.host, port=args.port, ssl_context=ssl_context,
+        app,
+        access_log=None,
+        host=args.host,
+        port=args.port,
+        ssl_context=ssl_context,
         loop=loop
     )
 
