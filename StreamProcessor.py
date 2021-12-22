@@ -3,9 +3,8 @@ from concurrent.futures import ThreadPoolExecutor
 import torch
 import cv2
 from av import VideoFrame
-import threading
 from aiortc import MediaStreamTrack
-from aiortc.contrib.media import MediaRecorder, MediaRelay
+from aiortc.contrib.media import MediaRelay
 import asyncio
 
 from OvenMediaSignaller import OvenMediaSignaller, OvenMediaConnectionException
@@ -34,16 +33,15 @@ class VideoTransformTrack(MediaStreamTrack):
         if self.running_models == 0:
             self.running_models = self.running_models + 1
             loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(model_executor, self.process_frame, frame)
+            self.results = await loop.run_in_executor(model_executor, self.process_frame, frame)
             self.running_models = self.running_models - 1
-            return result
-        return None
 
     # Process the frame and overwrite the results when we've got new ones
-    def process_frame(self, frame):
+    @staticmethod
+    def process_frame(frame):
         img = frame.to_ndarray(format="bgr24")
         results = model(img)
-        self.results = results.pandas().xyxy[0]
+        return results.pandas().xyxy[0]
 
     async def recv(self):
         frame = await self.track.recv()
@@ -57,10 +55,11 @@ class VideoTransformTrack(MediaStreamTrack):
 
         if self.results is not None:
             for result_index, row in self.results.iterrows():
-                cv2.rectangle(current_image, (int(row.xmin), int(row.ymin)), (int(row.xmax), int(row.ymax)),
-                              (0, 255, 0), 2)
-                cv2.putText(current_image, row['name'], (int(row.xmin), int(row.ymin) + 15), cv2.FONT_HERSHEY_COMPLEX,
-                            1, (0, 255, 0))
+                if row.confidence > 0.65:
+                    cv2.rectangle(current_image, (int(row.xmin), int(row.ymin)), (int(row.xmax), int(row.ymax)),
+                                  (0, 255, 0), 2)
+                    cv2.putText(current_image, row['name'], (int(row.xmin), int(row.ymin) + 15), cv2.FONT_HERSHEY_COMPLEX,
+                                1, (0, 255, 0))
 
         new_frame = VideoFrame.from_ndarray(current_image, format="bgr24")
         new_frame.pts = frame.pts
