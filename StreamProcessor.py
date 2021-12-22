@@ -55,11 +55,11 @@ class VideoTransformTrack(MediaStreamTrack):
 
         if self.results is not None:
             for result_index, row in self.results.iterrows():
-                if row.confidence > 0.65:
-                    cv2.rectangle(current_image, (int(row.xmin), int(row.ymin)), (int(row.xmax), int(row.ymax)),
-                                  (0, 255, 0), 2)
-                    cv2.putText(current_image, row['name'], (int(row.xmin), int(row.ymin) + 15), cv2.FONT_HERSHEY_COMPLEX,
-                                1, (0, 255, 0))
+                # if row.confidence > 0.65:
+                cv2.rectangle(current_image, (int(row.xmin), int(row.ymin)), (int(row.xmax), int(row.ymax)),
+                              (0, 255, 0), 2)
+                cv2.putText(current_image, row['name'], (int(row.xmin), int(row.ymin) + 15), cv2.FONT_HERSHEY_COMPLEX,
+                            1, (0, 255, 0))
 
         new_frame = VideoFrame.from_ndarray(current_image, format="bgr24")
         new_frame.pts = frame.pts
